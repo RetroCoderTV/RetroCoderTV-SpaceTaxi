@@ -17,17 +17,12 @@ THRUST_SIDE_MAX equ 1
 GRAVITY_MAX equ 8 ;upper byte
 GRAVITY_FORCE equ 32; %0000000000011111  
 
-
-
-
-
 player_facing_right db TRUE
 
 player_sprite_frame db 0
 PLAYER_SPRITE_SIZE equ 3*8
 
-
-player_collided_platform db FALSE
+player_grounded db FALSE
 
 
 
@@ -42,7 +37,7 @@ playersprite_right:
     db %10000111, %11000010, %00000000
     db %10110111, %11011010, %00000000
     db %00110000, %00011000, %00000000
-;
+
     db %00000111, %11100000, %00000000
     db %00001100, %10010000, %00000000
     db %00011000, %10001000, %00000000
@@ -51,7 +46,7 @@ playersprite_right:
     db %00100001, %11110000, %10000000
     db %00101101, %11110110, %10000000
     db %00001100, %00000110, %00000000
-;
+
     db %00000001, %11111000, %00000000
     db %00000011, %00100100, %00000000
     db %00000110, %00100010, %00000000
@@ -60,7 +55,7 @@ playersprite_right:
     db %00001000, %01111100, %00100000
     db %00001011, %01111101, %10100000
     db %00000011, %00000001, %10000000
-;
+
     db %00000000, %01111110, %00000000
     db %00000000, %11001001, %00000000
     db %00000001, %10001000, %10000000
@@ -69,7 +64,7 @@ playersprite_right:
     db %00000010, %00011111, %00001000
     db %00000010, %11011111, %01101000
     db %00000000, %11000000, %01100000
-;
+
     db %00000000, %00011111, %10000000
     db %00000000, %00110010, %01000000
     db %00000000, %01100010, %00100000
@@ -90,7 +85,7 @@ playersprite_left:
     db %00000000, %01000011, %11100001
     db %00000000, %01011011, %11101101
     db %00000000, %00011000, %00001100
-;
+
     db %00000000, %00000111, %11100000
     db %00000000, %00001001, %00110000
     db %00000000, %00010001, %00011000
@@ -99,7 +94,7 @@ playersprite_left:
     db %00000001, %00001111, %10000100
     db %00000001, %01101111, %10110100
     db %00000000, %01100000, %00110000
-;
+
     db %00000000, %00011111, %10000000
     db %00000000, %00100100, %11000000
     db %00000000, %01000100, %01100000
@@ -108,7 +103,7 @@ playersprite_left:
     db %00000100, %00111110, %00010000
     db %00000101, %10111110, %11010000
     db %00000001, %10000000, %11000000
-;
+
     db %00000000, %01111110, %00000000
     db %00000000, %10010011, %00000000
     db %00000001, %00010001, %10000000
@@ -117,7 +112,7 @@ playersprite_left:
     db %00010000, %11111000, %01000000
     db %00010110, %11111011, %01000000
     db %00000110, %00000011, %00000000
-;
+
     db %00000001, %11111000, %00000000
     db %00000010, %01001100, %00000000
     db %00000100, %01000110, %00000000
@@ -126,7 +121,7 @@ playersprite_left:
     db %01000011, %11100001, %00000000
     db %01011011, %11101101, %00000000
     db %00011000, %00001100, %00000000
-    ;
+    
 ;
 ;
 
@@ -135,8 +130,9 @@ playersprite_left:
 player_update:
     call check_keys
 
-    call plyr_apply_gravity
-    ; call plyr_apply_drag ;sideways 
+    ld a,(player_grounded)
+    cp FALSE
+    call z, plyr_apply_gravity
 
     ld a,(keypressed_W)
     cp TRUE
@@ -152,15 +148,17 @@ player_update:
 
     call set_target_pos
 
+
+    call do_move
+
+    ld a,FALSE
+    ld (player_grounded),a
+
     ld ix,platforms
-    call plyr_check_collision_platform
+    call plyr_chk_landing_collision
 
-    ld a,(player_collided_platform)
-    cp FALSE
-    call z,do_move
-
-
-
+    ld ix,platforms
+    call plyr_chk_collision_platform
     ret
 
 set_target_pos:
@@ -222,6 +220,9 @@ player_draw:
     ld hl,py
     inc hl
     ld e,(hl)
+    ld a,e
+    cp 192
+    ret nc
 
     ld a,(player_facing_right)
     cp TRUE
@@ -378,33 +379,126 @@ plyr_apply_thrusters_l:
 
 ;Collision prevention, checks the next position will result in collision or not
 ;IX=platforms
-plyr_check_collision_platform:
-    ld a,FALSE
-    ld (player_collided_platform),a
+plyr_chk_landing_collision:
+    ;check player is moving down
+    ld hl,vy
+    inc hl
+    ld a,(hl)
+    bit 7,a
+    ret nz
 
+    ;check for end of platforms array
     ld a,(ix)
     cp 255
     ret z
 
+    ;check player missed platform
+    ;passed the right side of platform
     ld hl,tx
     inc hl
     ld a,(hl)
+    add a,1
+    ld b,a
+    ld a,(ix+1)
+    add a,(ix+3)
+    cp b
+    jp c, p_chk_landing_next
+
+    ;passed the left side of platform
+    ld a,(ix+1)
+    ld b,a
+    ld hl,tx
+    inc hl
+    ld a,(hl)
+    add a,2 ;pw
+    cp b
+    jp c, p_chk_landing_next
+
+    ;passed the bottom of platform
+    ld hl,ty
+    inc hl
+    ld a,(hl)
+    ld b,a
+    ld a,(ix+2)
+    add a,8 ;platform height
+    cp b
+    jp c, p_chk_landing_next
+
+    ;passed the top of platform
+    ld a,(ix+2)
+    ld b,a
+    ld hl,ty
+    inc hl
+    ld a,(hl)
+    add a,8 ;ph
+    cp b
+    jp c, p_chk_landing_next
+
+
+
+    ; collision...
+    call player_set_grounded
+p_chk_landing_next:
+    ld de,PLATFORM_DATA_LENGTH
+    add ix,de
+    jp plyr_chk_landing_collision
+
+    
+player_set_grounded:
+    ld hl,0
+    ld (vy),hl
+    ld hl,0
+    ld (vx),hl
+    ld a,TRUE
+    ld (player_grounded),a
+
+    ld a,(ix+2)
+    sub 8 ;ph
+    ld hl,py
+    inc hl
+    ld (hl),a
+    ret
+
+
+
+
+
+;Collision prevention, checks the next position will result in collision or not
+;IX=platforms
+plyr_chk_collision_platform:
+    ld a,(player_grounded)
+    cp TRUE
+    ret z
+
+    ;check for end of platforms array
+    ld a,(ix)
+    cp 255
+    ret z
+
+    ;check player missed platform
+    ;passed the right side of platform
+    ld hl,px
+    inc hl
+    ld a,(hl)
+    add a,1
     ld b,a
     ld a,(ix+1)
     add a,(ix+3)
     cp b
     jp c, p_coll_platform_gonext
 
+    ;passed the left side of platform
     ld a,(ix+1)
     ld b,a
-    ld hl,tx
+    ld hl,px
     inc hl
     ld a,(hl)
-    add a,3 ;pw
+    add a,2 ;pw
     cp b
     jp c, p_coll_platform_gonext
 
-    ld hl,ty
+    ;passed the bottom of platform
+    ld hl,py
     inc hl
     ld a,(hl)
     ld b,a
@@ -413,27 +507,32 @@ plyr_check_collision_platform:
     cp b
     jp c, p_coll_platform_gonext
 
+    ;passed the top of platform
     ld a,(ix+2)
     ld b,a
-    ld hl,ty
+    ld hl,py
     inc hl
     ld a,(hl)
-    add a,8 ;ph
+    add a,4 ;ph/2 (half height is hacky fix to stop ghost collisions)
     cp b
     jp c, p_coll_platform_gonext
 
     ; collision...
-    
-    ld a,TRUE
-    ld (player_collided_platform),a
-
-    ld hl,0
-    ld (vy),hl
-    ret
-    
+    ld a,5
+    call 0x229b
 p_coll_platform_gonext:
     ld de,PLATFORM_DATA_LENGTH
     add ix,de
-    jp plyr_check_collision_platform
+    jp plyr_chk_collision_platform
 
-    
+
+
+
+
+
+
+
+player_kill:
+    ld a,7
+    call 0x229b
+    ret

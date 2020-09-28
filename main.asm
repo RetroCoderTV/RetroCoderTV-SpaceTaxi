@@ -30,6 +30,7 @@ main_update:
 main_draw:
     call cleargamewindow
     call player_draw
+    call platforms_draw
     call drawgamewindow
 
     ret
