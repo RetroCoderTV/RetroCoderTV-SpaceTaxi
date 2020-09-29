@@ -1,21 +1,25 @@
-py dw 0x1A00
-px dw 0x0500
+
+PY_DEFAULT equ 0x1A00
+PX_DEFAULT equ 0x0900
+
+py dw PY_DEFAULT
+px dw PX_DEFAULT
 
 vy dw 0x0000
 vx dw 0x0000
 
-ty dw 0x1A00
-tx dw 0x500
+ty dw PY_DEFAULT
+tx dw PX_DEFAULT
 
 
+;todo: figure out why the negative numbers need to be double the positive ones.
 
-
-THRUST_FORCE equ -64 ;%1111111111000000
-THRUST_MAX equ -8
-THRUST_SIDE_FORCE equ 51
+THRUST_FORCE equ -64*2 ;%1111111111000000
+THRUST_MAX equ -16
+THRUST_SIDE_FORCE equ 52
 THRUST_SIDE_MAX equ 1
-GRAVITY_MAX equ 8 ;upper byte
-GRAVITY_FORCE equ 32; %0000000000011111  
+GRAVITY_MAX equ 16 ;upper byte
+GRAVITY_FORCE equ 32*2; %0000000000011111  
 
 player_facing_right db TRUE
 
@@ -23,6 +27,12 @@ player_sprite_frame db 0
 PLAYER_SPRITE_SIZE equ 3*8
 
 player_grounded db FALSE
+
+player_is_alive db TRUE
+
+
+player_dead_time db 0
+PLAYER_DEATH_DELAY equ 20
 
 
 
@@ -125,14 +135,31 @@ playersprite_left:
 ;
 ;
 
-
+player_reset:
+    xor a
+    ld (player_dead_time),a
+    ld a,TRUE
+    ld (player_is_alive),a
+    ld hl,PX_DEFAULT
+    ld (px),hl
+    ld (tx),hl
+    ld hl,PY_DEFAULT
+    ld (py),hl
+    ld (ty),hl
+    ld hl,0
+    ld (vx),hl
+    ld (vy),hl
+    ret
 
 player_update:
+    ld a,(player_is_alive)
+    cp TRUE
+    jp nz,plyr_dead_upd
+
+
     call check_keys
 
-    ld a,(player_grounded)
-    cp FALSE
-    call z, plyr_apply_gravity
+    call plyr_apply_gravity
 
     ld a,(keypressed_W)
     cp TRUE
@@ -159,6 +186,15 @@ player_update:
 
     ld ix,platforms
     call plyr_chk_collision_platform
+    ret
+
+
+plyr_dead_upd:
+    ld a,(player_dead_time)
+    inc a
+    ld (player_dead_time),a
+    cp PLAYER_DEATH_DELAY
+    jp nc, game_over_menu
     ret
 
 set_target_pos:
@@ -193,26 +229,6 @@ do_move:
     ld (py),hl
     ret
     
-
-; move_player:
-;     ld hl,(px)
-;     ld de,(vx)
-;     add hl,de
-;     ld (px),hl
-
-
-
-;     ld hl,py
-;     inc hl
-;     ld d,(hl)
-;     ld hl,vy
-;     inc hl
-;     ld a,(hl)
-;     add a,d
-;     ld hl,py
-;     inc hl
-;     ld (hl),a
-;     ret
 player_draw:
     ld hl,px
     inc hl
@@ -223,6 +239,11 @@ player_draw:
     ld a,e
     cp 192
     ret nc
+
+    ld a,(player_is_alive)
+    cp TRUE
+    jp nz,p_dodraw_dead
+
 
     ld a,(player_facing_right)
     cp TRUE
@@ -245,8 +266,8 @@ p_dodraw_l:
     call nc,setplyrsprite_l4
     pop af
     cp THRUST_SIDE_FORCE*4
-    call nc,setplyrsprite_l5
-
+    call nc,setplyrsprite_l5   
+    
     call drawsprite24_8
     ret
 p_dodraw_r:
@@ -271,6 +292,10 @@ p_dodraw_r:
     call drawsprite24_8
     ret
 ;
+p_dodraw_dead:
+    call setplyrsprite_dead
+    call drawsprite16_8
+    ret
 
 setplyrsprite_l2:
     ld bc,playersprite_left+(PLAYER_SPRITE_SIZE*3)
@@ -300,9 +325,21 @@ setplyrsprite_r5:
     ld bc,playersprite_right+(PLAYER_SPRITE_SIZE*4)
     ret
 
+setplyrsprite_dead:
+    push de
+    call rand
+    ld b,a
+    call rand
+    ld c,a
+    pop de
+    ret
 
 
 plyr_apply_gravity:
+    ld a,(player_grounded)
+    cp TRUE
+    ret z
+
     ld hl,vy
     inc hl
     ld a,(hl)
@@ -345,6 +382,10 @@ plyr_apply_thrusters:
     ret
 
 plyr_apply_thrusters_r:
+    ld a,(player_grounded)
+    cp TRUE
+    ret z
+
     ld a,TRUE
     ld (player_facing_right),a 
     ld hl,vx
@@ -359,6 +400,10 @@ plyr_apply_thrusters_r:
     ld (vx),hl
     ret
 plyr_apply_thrusters_l:
+    ld a,(player_grounded)
+    cp TRUE
+    ret z
+
     ld a,FALSE
     ld (player_facing_right),a 
 
@@ -434,8 +479,6 @@ plyr_chk_landing_collision:
     cp b
     jp c, p_chk_landing_next
 
-
-
     ; collision...
     call player_set_grounded
 p_chk_landing_next:
@@ -444,21 +487,39 @@ p_chk_landing_next:
     jp plyr_chk_landing_collision
 
     
+
+
+
 player_set_grounded:
+    ;set v=0
     ld hl,0
     ld (vy),hl
     ld hl,0
     ld (vx),hl
+    
+    ;set as grounded
     ld a,TRUE
     ld (player_grounded),a
 
+    ;snap to sitting on platform
     ld a,(ix+2)
     sub 8 ;ph
     ld hl,py
     inc hl
     ld (hl),a
-    ret
+    ;also set ty = py (stops the 'dip' as we take off)
+    ld hl,(py)
+    ld (ty),hl
 
+    ld a,(customer_start_platform)
+    cp (ix)
+    call z,customer_trigger_ride
+
+    ld a,(customer_destination_platform)
+    cp (ix)
+    call z,customer_end_ride
+
+    ret
 
 
 
@@ -474,8 +535,7 @@ plyr_chk_collision_platform:
     ld a,(ix)
     cp 255
     ret z
-
-    ;check player missed platform
+;check player missed platform
     ;passed the right side of platform
     ld hl,px
     inc hl
@@ -503,7 +563,7 @@ plyr_chk_collision_platform:
     ld a,(hl)
     ld b,a
     ld a,(ix+2)
-    add a,(ix+4)
+    add a,8 ;platform height
     cp b
     jp c, p_coll_platform_gonext
 
@@ -513,13 +573,12 @@ plyr_chk_collision_platform:
     ld hl,py
     inc hl
     ld a,(hl)
-    add a,4 ;ph/2 (half height is hacky fix to stop ghost collisions)
+    add a,4 ;ph
     cp b
     jp c, p_coll_platform_gonext
 
     ; collision...
-    ld a,5
-    call 0x229b
+    call player_kill
 p_coll_platform_gonext:
     ld de,PLATFORM_DATA_LENGTH
     add ix,de
@@ -533,6 +592,6 @@ p_coll_platform_gonext:
 
 
 player_kill:
-    ld a,7
-    call 0x229b
+    ld a,FALSE
+    ld (player_is_alive),a
     ret
