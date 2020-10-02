@@ -6,8 +6,8 @@ platforms:
     db 2,22,40,4 
     db 3,2,80,4  
     db 4,22,80,4
-    db 5,6,110,5
-    db 6,17,110,5
+    db 5,6,112,5
+    db 6,17,112,5
     db 7,2,160,3
     db 8,23,160,3
     db 9,2,0,24 ;roof is number 9 for platform label purposes
@@ -24,7 +24,7 @@ platformsprites:
     db %01010101
     db %11111111
     db %11111111
-
+ 
 
 
 
@@ -56,7 +56,11 @@ plats_draw_cells:
     ld c,a
     push bc
     ld bc,platformsprites
+    push de
     call drawsprite8_8
+    pop de
+    ld b,%00000010
+    call paint_sprite_1_1
     pop bc
     djnz plats_draw_cells
 
@@ -81,6 +85,8 @@ plats_draw_cells:
     inc d
     ld e,(ix+2)
     call drawsprite8_8_overwrite
+    
+    
 plats_draw_next:
     ld de,PLATFORM_DATA_LENGTH
     add ix,de

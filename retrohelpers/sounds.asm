@@ -44,6 +44,11 @@ sound_GSharp_0_05:
     call 0x3b5
     ret
 
+sound_A_0_05:
+    ld de,22
+    ld hl,964
+    call 0x3b5
+    ret
     
 sound_GSharp_0_25: ;GSharp, 0.25 seconds
     ld hl,497 ;sound pitch

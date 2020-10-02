@@ -14,7 +14,7 @@ customer_destination_platform db 0
 customer_y db 0
 customer_x db 0
 CUSTOMER_DEFAULT_FARE equ 0x0a00
-customer_fare dw 0x0a00
+customer_fare dw CUSTOMER_DEFAULT_FARE
 
 
 
@@ -30,6 +30,12 @@ RIDING equ 2
 customer_new:
     ld a,(customer_state)
     cp NOTHING
+
+    ld hl,customer_fare
+    xor a
+    ld (hl),a
+    inc hl
+    ld (hl),0x0a
     ret nz
 
 cust_new_chooserandomplat:
@@ -164,4 +170,6 @@ customer_end_ride:
     ld (customer_state),a
 
     call customer_new
+
+
     ret

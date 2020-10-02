@@ -24,11 +24,7 @@ init_ui_labels:
     ld de,fare_string
     call PrintStr
 
-    ld d,DESTINATION_LABEL_Y
-    ld e,DESTINATION_LABEL_X
-    call GetCharAddr
-    ld de,destination_string
-    call PrintStr
+    
 
     ret
 
@@ -82,10 +78,18 @@ refresh_ui_numbers:
     call PrintChar
 
     ;DESTINATION
+    ld a,(customer_state)
+    cp RIDING
+    call z,show_destination
+    call nz,delete_destination
+    ret
+;
+
+show_destination:
     ld a,(customer_destination_platform)
     cp 0 
     ret z
-    
+
     ld d,DESTINATION_LABEL_Y
     ld e,DESTINATION_1_X
     call GetCharAddr
@@ -93,8 +97,20 @@ refresh_ui_numbers:
     add a,ASCII_ZERO
     call PrintChar
 
+    ld d,DESTINATION_LABEL_Y
+    ld e,DESTINATION_LABEL_X
+    call GetCharAddr
+    ld de,destination_string
+    call PrintStr
     ret
-;
+
+delete_destination:
+    ld d,DESTINATION_LABEL_Y
+    ld e,DESTINATION_LABEL_X-2
+    call GetCharAddr
+    ld de,empty_destination_string
+    call PrintStr
+    ret
 
 ;DE=yx
 ;A=(value)
@@ -289,6 +305,7 @@ CASH_1000_X equ 26
 CASH_10000_X equ 25
 
 
+
 cash_1     db 0
 cash_10    db 0
 cash_100   db 0
@@ -305,9 +322,9 @@ FARE_1_X equ 30
 DESTINATION_LABEL_Y equ 8
 DESTINATION_LABEL_X equ 27
 DESTINATION_1_X equ 25
-destination_string db 'plz!'
+destination_string db 'plz!',0
 
-
+empty_destination_string db '      ',0
 
 
 

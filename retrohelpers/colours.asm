@@ -52,7 +52,7 @@ paint_sprite_1_1:
     ld a,d
     cp BUFFER_SIDE_EXTRA
     ret c
-    cp BUFFER_WINDOW_WIDTH-4
+    cp BUFFER_WINDOW_WIDTH-2
     ret nc
     ld a,e
     cp 192-7 ; GAME_WINDOW_HEIGHT-3-1

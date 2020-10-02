@@ -34,6 +34,14 @@ player_is_alive db TRUE
 player_dead_time db 0
 PLAYER_DEATH_DELAY equ 20
 
+;Landing Gear
+LG_HEIGHT equ 8
+LG_X_OFFSET equ 1
+LG_Y_OFFSET equ 8
+landing_gear_active db FALSE
+
+
+
 
 
 ; ASM data file from a ZX-Paintbrush picture with 24 x 8 pixels (= 3 x 1 characters)
@@ -135,6 +143,18 @@ playersprite_left:
 ;
 ;
 
+playersprite_landinggear:
+    db %00011000
+    db %00011000
+    db %00100100
+    db %00100100
+    db %01000010
+    db %01000010
+    db %10000001
+    db %10000001
+;
+
+
 player_reset:
     xor a
     ld (player_dead_time),a
@@ -149,14 +169,51 @@ player_reset:
     ld hl,0
     ld (vx),hl
     ld (vy),hl
+
+    ld hl,CUSTOMER_DEFAULT_FARE
+    ld (customer_fare),hl
     ret
 
 player_update:
+    
+
     ld a,(player_is_alive)
     cp TRUE
     jp nz,plyr_dead_upd
 
+    call plyr_handle_key_input
 
+    call plyr_check_bounds
+
+    ld (landing_gear_active),a
+
+    call do_move
+
+    call set_target_pos
+    ld ix,platforms
+    call plyr_chk_landing_collision
+
+    ld ix,platforms
+    call plyr_chk_collision_platform
+
+    
+
+    
+     
+    ret
+
+
+plyr_dead_upd:
+    ld a,(player_dead_time)
+    inc a
+    ld (player_dead_time),a
+    cp PLAYER_DEATH_DELAY
+    jp nc, game_over_menu
+    ret
+
+
+
+plyr_handle_key_input:
     call check_keys
 
     call plyr_apply_gravity
@@ -173,29 +230,39 @@ player_update:
     cp TRUE
     call z,plyr_apply_thrusters_l
 
-    call set_target_pos
+    ret
+;
 
+plyr_check_bounds:
+    ld hl,px
+    inc hl
+    ld a,(hl)
+    cp 0 ;left edge of buffer
+    push af
+    call z, player_kill
+    pop af
+    cp 26 ;right edge of buffer minus 2
+    call z, player_kill
 
-    call do_move
+    ld hl,py
+    inc hl
+    ld a,(hl)
+    cp 191
+    call nc,player_kill
 
-    ld a,FALSE
-    ld (player_grounded),a
-
-    ld ix,platforms
-    call plyr_chk_landing_collision
-
-    ld ix,platforms
-    call plyr_chk_collision_platform
     ret
 
 
-plyr_dead_upd:
-    ld a,(player_dead_time)
-    inc a
-    ld (player_dead_time),a
-    cp PLAYER_DEATH_DELAY
-    jp nc, game_over_menu
-    ret
+
+
+
+
+
+
+
+
+
+
 
 set_target_pos:
     ld hl,(px)
@@ -240,6 +307,8 @@ player_draw:
     cp 192
     ret nc
 
+    
+
     ld a,(player_is_alive)
     cp TRUE
     jp nz,p_dodraw_dead
@@ -269,6 +338,10 @@ p_dodraw_l:
     call nc,setplyrsprite_l5   
     
     call drawsprite24_8
+
+    ld a,(landing_gear_active)
+    cp TRUE
+    call z, draw_landing_gear
     ret
 p_dodraw_r:
     ld hl,px
@@ -290,8 +363,27 @@ p_dodraw_r:
     call nc,setplyrsprite_r5
 
     call drawsprite24_8
+
+    ld a,(landing_gear_active)
+    cp TRUE
+    call z, draw_landing_gear
+
     ret
 ;
+draw_landing_gear:
+    ld hl,px
+    inc hl
+    ld a,(hl)
+    add a,LG_X_OFFSET
+    ld d,a
+    ld hl,py
+    inc hl
+    ld a,(hl)
+    add a,LG_Y_OFFSET
+    ld e,a
+    ld bc,playersprite_landinggear
+    call drawsprite8_8
+    ret
 p_dodraw_dead:
     call setplyrsprite_dead
     call drawsprite16_8
@@ -382,7 +474,7 @@ plyr_apply_thrusters:
     ret
 
 plyr_apply_thrusters_r:
-    ld a,(player_grounded)
+    ld a,(landing_gear_active)
     cp TRUE
     ret z
 
@@ -400,7 +492,7 @@ plyr_apply_thrusters_r:
     ld (vx),hl
     ret
 plyr_apply_thrusters_l:
-    ld a,(player_grounded)
+    ld a,(landing_gear_active)
     cp TRUE
     ret z
 
@@ -425,6 +517,11 @@ plyr_apply_thrusters_l:
 ;Collision prevention, checks the next position will result in collision or not
 ;IX=platforms
 plyr_chk_landing_collision:
+    ld a,FALSE
+    ld (player_grounded),a
+    ld a,FALSE
+    
+
     ;check player is moving down
     ld hl,vy
     inc hl
@@ -469,15 +566,20 @@ plyr_chk_landing_collision:
     cp b
     jp c, p_chk_landing_next
 
-    ;passed the top of platform
+    ;passed the top of platform (checking landing gear)
     ld a,(ix+2)
     ld b,a
     ld hl,ty
     inc hl
     ld a,(hl)
     add a,8 ;ph
+    add a,LG_HEIGHT
+    add a,LG_HEIGHT
+    add a,LG_HEIGHT
+    add a,LG_HEIGHT
     cp b
     jp c, p_chk_landing_next
+
 
     ; collision...
     call player_set_grounded
@@ -487,10 +589,47 @@ p_chk_landing_next:
     jp plyr_chk_landing_collision
 
     
-
+show_landing_gear:
+    ld a,TRUE
+    ld (landing_gear_active),a
+    ret
 
 
 player_set_grounded:
+    call show_landing_gear
+
+    ;if player bottom is greater than platform top, dont set as grounded
+    ld a,(ix+2)
+    ld b,a
+    ld hl,ty
+    inc hl
+    ld a,(hl)
+    add a,9
+    cp b
+    ret nc
+    
+    ;passed the top of platform
+    ld a,(ix+2)
+    ld b,a
+    ld hl,ty
+    inc hl
+    ld a,(hl)
+    add a,8 ;ph
+    add a,LG_HEIGHT
+    cp b
+    ret c
+
+    ;kill player if he lands too fast
+    ld hl,vy
+    inc hl
+    ld a,(hl)
+    cp GRAVITY_MAX/3
+    push af
+    call nc,player_kill
+    pop af
+    ret nc
+
+
     ;set v=0
     ld hl,0
     ld (vy),hl
@@ -503,7 +642,7 @@ player_set_grounded:
 
     ;snap to sitting on platform
     ld a,(ix+2)
-    sub 8 ;ph
+    sub 16 ;ph+lg
     ld hl,py
     inc hl
     ld (hl),a

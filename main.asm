@@ -61,18 +61,6 @@ stack_top:  defb 0  ; WPMEM
 
 
 
-program_end:
-    call sound_A_0_25
-    call sound_B_0_25
-    call sound_GSharp_0_25
-    call sound_B_0_25
-    call sound_A_0_25
-    
-
-
-
-
-
 
 
     SAVESNA "main.sna", program_start
